@@ -24,3 +24,5 @@ Employé : alex / 1234
 Cette version utilise exactement le logo et les visuels de machines fournis par l'utilisateur.
 
 - Fiche employés : téléphone, date de naissance, date d'embauche, date de fin de contrat et statut.
+
+- Suppression d'un employé : le compte est retiré de la liste, mais les ventes, services, heures et archives historiques sont conservés.
