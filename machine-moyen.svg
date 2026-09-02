@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 440 150">
+<rect width="440" height="150" rx="16" fill="#111114"/>
+<g fill="none" stroke="#8e2638" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
+<rect x="90" y="55" width="175" height="55" rx="16"/><circle cx="122" cy="82" r="15"/><path d="M265 82h52l20-18"/><path d="M335 64l22-10"/>
+<path d="M150 60v-18m45 18V30m45 30V42" opacity=".7"/>
+</g>
+<g fill="#f1eee8" opacity=".9"><circle cx="180" cy="82" r="7"/><circle cx="220" cy="82" r="7"/></g>
+<text x="220" y="136" text-anchor="middle" font-family="Arial,sans-serif" font-size="16" font-weight="700" letter-spacing="3" fill="#96939a">SAINTS TATTOO</text>
+</svg>
