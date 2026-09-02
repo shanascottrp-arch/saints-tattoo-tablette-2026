@@ -1,7 +1,7 @@
 const KEY="saintsTattooTablette";
 const DEFAULT={
  users:[
-  {id:1,name:"Admin",username:"admin",password:"admin",role:"admin",grade:"Patron",active:true},
+{id:1,name:"Kuroiki Ayamé",username:"Kuroiki Ayamé",password:"6566",role:"admin",grade:"Patron",active:true},
   {id:2,name:"Alex Morgan",username:"alex",password:"1234",role:"employee",grade:"Employé",active:true}
  ],
  prices:{Petit:500,Moyen:800,Grand:1200}, salaryQuota:5000, salaryByGrade:{Patron:4800,Manager:3900,"Employé":3000}, bank:5000,
@@ -17,7 +17,7 @@ function load(){
   const s={...structuredClone(DEFAULT),...x};
   s.users=(s.users||[]).map(u=>({...u,grade:u.grade||((u.role==="admin")?"Patron":"Employé")}));
   // Migration de sécurité : garantir les comptes de démonstration si une ancienne version les a perdus.
-  if(!s.users.some(u=>u.username==="admin")) s.users.unshift({id:1,name:"Admin",username:"admin",password:"admin",role:"admin",grade:"Patron",active:true});
+if(!s.users.some(u=>u.username==="Kuroiki Ayamé")) s.users.unshift({id:1,name:"Kuroiki Ayamé",username:"Kuroiki Ayamé",password:"6566",role:"admin",grade:"Patron",active:true});
   if(!s.users.some(u=>u.username==="alex")) s.users.push({id:2,name:"Alex Morgan",username:"alex",password:"1234",role:"employee",grade:"Employé",active:true});
   s.prices={...DEFAULT.prices,...(s.prices||{})};
   s.salaryQuota=Number(s.salaryQuota||5000);
