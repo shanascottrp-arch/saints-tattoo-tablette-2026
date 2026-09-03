@@ -158,22 +158,10 @@ document.addEventListener("click",e=>{
   if(cat&&desc&&amount>0){state.transactions.push({id:state.nextId++,type:"expense",category:cat,description:desc,amount,createdAt:new Date().toISOString()});state.bank-=amount;save();render();toast("Dépense ajoutée.")}return
  }
  if(act==="addEmployee"){
-  const name=prompt("Nom complet"),username=prompt("Identifiant"),password=prompt("Mot de passe"),grade=prompt("Grade : Patron, Manager ou Employé","Employé");
-  if(!name||!username||!password)return;
-  const grades=["Patron","Manager","Employé"];
-  if(!grades.includes(grade)){alert("Grade invalide.");return}
-  if(state.users.some(x=>String(x.username).toLowerCase()===String(username).toLowerCase())){alert("Cet identifiant existe déjà.");return}
-  const phone=prompt("Numéro de téléphone","")||"";
-  const birthDate=prompt("Date de naissance (JJ/MM/AAAA)","")||"";
-  const hireDate=prompt("Date d'embauche (JJ/MM/AAAA)","")||"";
-  const endDate=prompt("Date de fin de contrat (laisser vide si CDI)","")||"";
-  const status=prompt("Statut : Actif, Suspendu ou Fin de contrat","Actif")||"Actif";
-  const statuses=["Actif","Suspendu","Fin de contrat"];
-  if(!statuses.includes(status)){alert("Statut invalide.");return}
-  state.users.push({id:state.nextId++,name,username,password,role:"employee",grade,active:status==="Actif",phone,birthDate,hireDate,endDate,status});
-  save();render();toast("Employé créé.");return
- }
- if(act==="savePrices"){state.prices={Petit:Number(document.getElementById("pPetit").value||0),Moyen:Number(document.getElementById("pMoyen").value||0),Grand:Number(document.getElementById("pGrand").value||0)};save();render();toast("Prix enregistrés.");return}
+  openEmployeeModal();
+  return
+  }
+  if(act==="savePrices"){state.prices={Petit:Number(document.getElementById("pPetit").value||0),Moyen:Number(document.getElementById("pMoyen").value||0),Grand:Number(document.getElementById("pGrand").value||0)};save();render();toast("Prix enregistrés.");return}
  if(act==="saveBank"){state.bank=Number(document.getElementById("bank").value||0);save();render();toast("Solde enregistré.");return}
  if(act==="export"){const a=document.createElement("a");const u=URL.createObjectURL(new Blob([JSON.stringify(state,null,2)],{type:"application/json"}));a.href=u;a.download="saints-tattoo-sauvegarde.json";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),500);return}
  if(act==="import"){document.getElementById("file")?.click();return}
@@ -218,5 +206,42 @@ document.addEventListener("click",e=>{
 document.addEventListener("change",e=>{
  if(e.target.id==="file"&&e.target.files[0]){const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);if(!d.users||!d.sales||!d.transactions)throw 0;localStorage.setItem(KEY,JSON.stringify(d));location.reload()}catch{alert("Sauvegarde invalide.")}};r.readAsText(e.target.files[0])}
 });
+
+function openEmployeeModal(){
+ const old=document.getElementById("employeeModal"); if(old) old.remove();
+ document.body.insertAdjacentHTML("beforeend",`
+  <div id="employeeModal" class="modal-backdrop">
+   <div class="employee-modal card">
+    <div class="modal-head"><div><div class="eyebrow">SAINTS TATTOO</div><h3>Créer un employé</h3></div><button type="button" class="btn small" data-employee-cancel>Fermer</button></div>
+    <div class="employee-form-grid">
+     <label>Nom complet<input id="em-name" type="text" autocomplete="off" placeholder="Nom et prénom"></label>
+     <label>Identifiant<input id="em-username" type="text" autocomplete="off" placeholder="Identifiant"></label>
+     <label>Mot de passe<input id="em-password" type="text" autocomplete="off" placeholder="Mot de passe"></label>
+     <label>Grade<select id="em-grade"><option>Employé</option><option>Manager</option><option>Patron</option></select></label>
+     <label>Numéro de téléphone<input id="em-phone" type="text" inputmode="tel" autocomplete="off" placeholder="555-0000"></label>
+     <label>Date de naissance<input id="em-birth" type="text" placeholder="JJ/MM/AAAA"></label>
+     <label>Date d'embauche<input id="em-hire" type="text" placeholder="JJ/MM/AAAA"></label>
+     <label>Date de fin de contrat<input id="em-end" type="text" placeholder="Laisser vide si CDI"></label>
+     <label>Statut<select id="em-status"><option>Actif</option><option>Suspendu</option><option>Fin de contrat</option></select></label>
+    </div>
+    <div class="modal-actions"><button type="button" class="btn" data-employee-cancel>Annuler</button><button type="button" class="btn primary" data-employee-save>Créer l'employé</button></div>
+   </div>
+  </div>`);
+}
+function closeEmployeeModal(){document.getElementById("employeeModal")?.remove()}
+function saveEmployeeModal(){
+ const name=document.getElementById("em-name")?.value.trim(), username=document.getElementById("em-username")?.value.trim(), password=document.getElementById("em-password")?.value.trim();
+ const grade=document.getElementById("em-grade")?.value||"Employé", phone=document.getElementById("em-phone")?.value.trim()||"", birthDate=document.getElementById("em-birth")?.value.trim()||"", hireDate=document.getElementById("em-hire")?.value.trim()||"", endDate=document.getElementById("em-end")?.value.trim()||"", status=document.getElementById("em-status")?.value||"Actif";
+ if(!name||!username||!password){toast("Remplis le nom, l'identifiant et le mot de passe.");return}
+ if(state.users.some(x=>String(x.username).toLowerCase()===username.toLowerCase())){toast("Cet identifiant existe déjà.");return}
+ state.users.push({id:state.nextId++,name,username,password,role:"employee",grade,active:status==="Actif",phone,birthDate,hireDate,endDate,status});
+ save(); closeEmployeeModal(); render(); toast("Employé créé.");
+}
+
+document.addEventListener("click",e=>{
+ if(e.target.closest("[data-employee-cancel]")){closeEmployeeModal();return}
+ if(e.target.closest("[data-employee-save]")){saveEmployeeModal();return}
+});
+
 setInterval(()=>{if(archiveWeekIfNeeded()&&currentUser)render();else if(currentUser)render()},60000);
 render();
