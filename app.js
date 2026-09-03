@@ -1,7 +1,30 @@
 const KEY="saintsTattooTablette";
 const SUPABASE_URL="https://keksjbpgusemdcgwgfgj.supabase.co";
 const SUPABASE_KEY="sb_publishable_tie5i1ZH57xSJgf9Hx-DLQ_FCkIURi6";
-const db=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+const API_URL=SUPABASE_URL+"/rest/v1/app_state";
+async function supabaseGetState(){
+  const r=await fetch(API_URL+"?id=eq.1&select=state",{headers:{
+    apikey:SUPABASE_KEY,
+    Authorization:"Bearer "+SUPABASE_KEY,
+    Accept:"application/json"
+  }});
+  if(!r.ok) throw new Error("GET app_state "+r.status+" "+await r.text());
+  const rows=await r.json();
+  return rows[0]?.state ?? null;
+}
+async function supabaseSaveState(){
+  const r=await fetch(API_URL,{
+    method:"POST",
+    headers:{
+      apikey:SUPABASE_KEY,
+      Authorization:"Bearer "+SUPABASE_KEY,
+      "Content-Type":"application/json",
+      Prefer:"resolution=merge-duplicates,return=minimal"
+    },
+    body:JSON.stringify({id:1,state,updated_at:new Date().toISOString()})
+  });
+  if(!r.ok) throw new Error("POST app_state "+r.status+" "+await r.text());
+}
 let sharedReady=false;
 const DEFAULT={
  users:[
@@ -41,31 +64,39 @@ function load(){
 function save(){
  localStorage.setItem(KEY,JSON.stringify(state));
  if(sharedReady){
-  db.from("app_state").upsert({id:1,state,updated_at:new Date().toISOString()}).then(({error})=>{
-   if(error) console.error("Supabase sauvegarde:",error);
+  supabaseSaveState().catch(error=>{
+   console.error("Supabase sauvegarde:",error);
+   toast("Synchronisation Supabase impossible.");
   });
  }
 }
 async function initSharedState(){
  try{
-  const {data,error}=await db.from("app_state").select("state").eq("id",1).maybeSingle();
-  if(error) throw error;
-  if(data?.state && Object.keys(data.state).length){
-   state={...structuredClone(DEFAULT),...data.state};
-   state.users=(state.users||[]).map(u=>({...u,grade:u.grade||((u.role==="admin")?"Patron":"Employé"),phone:u.phone||"",birthDate:u.birthDate||"",hireDate:u.hireDate||"",endDate:u.endDate||"",status:u.status||((u.active===false)?"Inactif":"Actif")}));
+  const remoteState=await supabaseGetState();
+  if(remoteState && Object.keys(remoteState).length){
+   state={...structuredClone(DEFAULT),...remoteState};
+   state.users=(state.users||[]).map(u=>({...u,
+    grade:u.grade||((u.role==="admin")?"Patron":"Employé"),
+    phone:u.phone||"",birthDate:u.birthDate||"",hireDate:u.hireDate||"",
+    endDate:u.endDate||"",status:u.status||((u.active===false)?"Inactif":"Actif")
+   }));
    state.prices={...DEFAULT.prices,...(state.prices||{})};
    state.salaryQuota=Number(state.salaryQuota||5000);
    state.salaryByGrade={...DEFAULT.salaryByGrade,...(state.salaryByGrade||{})};
-   state.transactions=state.transactions||[];state.services=state.services||[];state.sales=state.sales||[];state.salaryPayments=state.salaryPayments||[];state.weeklyArchives=state.weeklyArchives||[];state.archivedUsers=state.archivedUsers||[];state.lastWeeklyArchiveKey=state.lastWeeklyArchiveKey||null;
+   state.transactions=state.transactions||[];state.services=state.services||[];
+   state.sales=state.sales||[];state.salaryPayments=state.salaryPayments||[];
+   state.weeklyArchives=state.weeklyArchives||[];state.archivedUsers=state.archivedUsers||[];
+   state.lastWeeklyArchiveKey=state.lastWeeklyArchiveKey||null;
    localStorage.setItem(KEY,JSON.stringify(state));
   }else{
-   await db.from("app_state").upsert({id:1,state,updated_at:new Date().toISOString()});
+   // Première connexion : envoyer les données locales existantes vers Supabase.
+   await supabaseSaveState();
   }
   sharedReady=true;
  }catch(err){
   console.error("Supabase connexion:",err);
-  alert("La connexion partagée à Supabase n'est pas disponible. La tablette utilise temporairement les données locales.");
   sharedReady=false;
+  alert("La synchronisation partagée avec Supabase a échoué. Vérifie la connexion et les droits de la table app_state.");
  }
  archiveWeekIfNeeded();
  render();
