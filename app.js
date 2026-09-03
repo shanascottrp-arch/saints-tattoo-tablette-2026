@@ -62,13 +62,11 @@ function load(){
 function save(){
  localStorage.setItem(KEY,JSON.stringify(state));
  if(sharedReady){
-  return supabaseSaveState().catch(error=>{
+  supabaseSaveState().catch(error=>{
    console.error("Supabase sauvegarde:",error);
    toast("Synchronisation Supabase impossible.");
-   throw error;
   });
  }
- return Promise.resolve();
 }
 async function initSharedState(){
  try{
@@ -181,17 +179,51 @@ function employees(){
  </tbody></table></div></section>`}
 function settings(){return `${header("Paramètres","Réglages et sauvegarde de la tablette.")}<div class="two-col"><section class="card"><h3>Prix des tatouages</h3><div class="form-grid"><label>Petit<input id="pPetit" type="number" min="0" value="${state.prices.Petit}"></label><label>Moyen<input id="pMoyen" type="number" min="0" value="${state.prices.Moyen}"></label><label>Grand<input id="pGrand" type="number" min="0" value="${state.prices.Grand}"></label></div><button type="button" class="btn primary" data-action="savePrices">Enregistrer les prix</button></section><section class="card"><h3>Solde bancaire</h3><input id="bank" type="number" min="0" step=".01" value="${state.bank}"><button type="button" class="btn" data-action="saveBank">Enregistrer</button></section></div><section class="card"><h3>Sauvegarde</h3><p class="muted">Conservez une copie des données.</p><div class="actions"><button type="button" class="btn primary" data-action="export">Exporter</button><button type="button" class="btn" data-action="import">Importer</button><input id="file" type="file" accept=".json" hidden></div></section><section class="card danger-zone"><h3>Zone sensible</h3><p class="muted">Efface les données locales.</p><button type="button" class="btn danger" data-action="reset">Réinitialiser</button></section>`}
 function view(){switch(page){case"home":return home();case"service":return servicePage();case"tattoo":return tattooPage();case"history":return historyPage();case"dashboard":return dashboard();case"accounting":return accounting();case"payroll":return payroll();case"employees":return employees();case"settings":return settings();default:return home()}}
-function doLogin(e){
+function normalizeLogin(v){
+ return String(v??"")
+  .normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+  .trim().replace(/\s+/g," ").toLowerCase();
+}
+async function doLogin(e){
  e.preventDefault();
- const username=(document.getElementById("username")?.value||"").trim().toLowerCase();
- const password=document.getElementById("password")?.value||"";
- const u=state.users.find(x=>String(x.username).trim().toLowerCase()===username&&String(x.password)===password&&x.active!==false);
+ const rawLogin=(document.getElementById("username")?.value||"");
+ const username=normalizeLogin(rawLogin);
+ const password=String(document.getElementById("password")?.value||"").trim();
+ const findUser=()=>state.users.find(x=>
+   (normalizeLogin(x.username)===username || normalizeLogin(x.name)===username) &&
+   String(x.password).trim()===password && x.active!==false
+ );
+ let u=findUser();
+ // En cas de connexion depuis un appareil qui n'a pas encore chargé la dernière version distante,
+ // on relit Supabase une fois avant de refuser la connexion.
+ if(!u){
+  try{
+   const remoteState=await supabaseGetState();
+   if(remoteState && Object.keys(remoteState).length){
+    state={...structuredClone(DEFAULT),...remoteState};
+    state.users=(state.users||[]).map(x=>({...x,
+      grade:x.grade||((x.role==="admin")?"Patron":"Employé"),
+      phone:x.phone||"",birthDate:x.birthDate||"",hireDate:x.hireDate||"",
+      endDate:x.endDate||"",status:x.status||((x.active===false)?"Inactif":"Actif")
+    }));
+    state.prices={...DEFAULT.prices,...(state.prices||{})};
+    state.salaryQuota=Number(state.salaryQuota||5000);
+    state.salaryByGrade={...DEFAULT.salaryByGrade,...(state.salaryByGrade||{})};
+    state.transactions=state.transactions||[]; state.services=state.services||[];
+    state.sales=state.sales||[]; state.salaryPayments=state.salaryPayments||[];
+    state.weeklyArchives=state.weeklyArchives||[]; state.archivedUsers=state.archivedUsers||[];
+    state.lastWeeklyArchiveKey=state.lastWeeklyArchiveKey||null;
+    localStorage.setItem(KEY,JSON.stringify(state));
+    u=findUser();
+   }
+  }catch(err){ console.error("Supabase login:",err); }
+ }
  if(!u){const er=document.getElementById("loginError");if(er)er.textContent="Identifiant ou mot de passe incorrect.";return false}
  currentUser=u;page="home";selectedTattoo=null;render();return false;
 }
 function render(){document.getElementById("app").innerHTML=currentUser?shell():loginView()}
 
-document.addEventListener("click",async e=>{
+document.addEventListener("click",e=>{
  const pg=e.target.closest("[data-page]");
  if(pg){page=pg.dataset.page;selectedTattoo=null;render();return}
  const tb=e.target.closest("[data-tab]");
@@ -263,20 +295,7 @@ document.addEventListener("click",async e=>{
   state.archivedUsers=state.archivedUsers||[];
   state.archivedUsers.push({...u,deletedAt:new Date().toISOString()});
   state.users=state.users.filter(x=>x.id!==u.id);
-  localStorage.setItem(KEY,JSON.stringify(state));
-  if(sharedReady){
-   try{
-    await supabaseSaveState();
-   }catch(error){
-    console.error("Suppression employé - Supabase:",error);
-    alert("La suppression n'a pas pu être synchronisée avec Supabase. Aucun changement n'a été conservé.");
-    state.users.push(u);
-    state.archivedUsers=state.archivedUsers.filter(x=>!(x.id===u.id&&x.deletedAt));
-    localStorage.setItem(KEY,JSON.stringify(state));
-    return;
-   }
-  }
-  render();toast("Employé supprimé. Son historique est conservé.");return
+  save();render();toast("Employé supprimé. Son historique est conservé.");return
  }
  const tog=e.target.closest("[data-toggle]");
  if(tog){const u=state.users.find(x=>x.id===Number(tog.dataset.toggle));if(u){u.active=!u.active;u.status=u.active?"Actif":"Suspendu";save();render();toast(u.active?"Compte activé.":"Compte désactivé.")}return}
