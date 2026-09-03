@@ -5,7 +5,6 @@ const API_URL=SUPABASE_URL+"/rest/v1/app_state";
 async function supabaseGetState(){
   const r=await fetch(API_URL+"?id=eq.1&select=state",{headers:{
     apikey:SUPABASE_KEY,
-    Authorization:"Bearer "+SUPABASE_KEY,
     Accept:"application/json"
   }});
   if(!r.ok) throw new Error("GET app_state "+r.status+" "+await r.text());
@@ -17,8 +16,7 @@ async function supabaseSaveState(){
     method:"POST",
     headers:{
       apikey:SUPABASE_KEY,
-      Authorization:"Bearer "+SUPABASE_KEY,
-      "Content-Type":"application/json",
+        "Content-Type":"application/json",
       Prefer:"resolution=merge-duplicates,return=minimal"
     },
     body:JSON.stringify({id:1,state,updated_at:new Date().toISOString()})

@@ -26,3 +26,6 @@ Cette version utilise exactement le logo et les visuels de machines fournis par 
 - Fiche employés : téléphone, date de naissance, date d'embauche, date de fin de contrat et statut.
 
 - Suppression d'un employé : le compte est retiré de la liste, mais les ventes, services, heures et archives historiques sont conservés.
+
+
+Synchronisation partagée : les données de la tablette sont stockées dans Supabase via la table app_state.
