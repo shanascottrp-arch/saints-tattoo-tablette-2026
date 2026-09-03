@@ -12,16 +12,16 @@ async function supabaseGetState(){
   return rows[0]?.state ?? null;
 }
 async function supabaseSaveState(){
-  const r=await fetch(API_URL,{
-    method:"POST",
+  const r=await fetch(API_URL+"?id=eq.1",{
+    method:"PATCH",
     headers:{
       apikey:SUPABASE_KEY,
-        "Content-Type":"application/json",
-      Prefer:"resolution=merge-duplicates,return=minimal"
+      "Content-Type":"application/json",
+      Prefer:"return=minimal"
     },
-    body:JSON.stringify({id:1,state,updated_at:new Date().toISOString()})
+    body:JSON.stringify({state,updated_at:new Date().toISOString()})
   });
-  if(!r.ok) throw new Error("POST app_state "+r.status+" "+await r.text());
+  if(!r.ok) throw new Error("PATCH app_state "+r.status+" "+await r.text());
 }
 let sharedReady=false;
 const DEFAULT={
@@ -62,11 +62,13 @@ function load(){
 function save(){
  localStorage.setItem(KEY,JSON.stringify(state));
  if(sharedReady){
-  supabaseSaveState().catch(error=>{
+  return supabaseSaveState().catch(error=>{
    console.error("Supabase sauvegarde:",error);
    toast("Synchronisation Supabase impossible.");
+   throw error;
   });
  }
+ return Promise.resolve();
 }
 async function initSharedState(){
  try{
@@ -94,7 +96,7 @@ async function initSharedState(){
  }catch(err){
   console.error("Supabase connexion:",err);
   sharedReady=false;
-  alert("La synchronisation partagée avec Supabase a échoué. Vérifie la connexion et les droits de la table app_state.");
+  alert("La synchronisation Supabase a échoué : "+(err?.message||err));
  }
  archiveWeekIfNeeded();
  render();
@@ -189,7 +191,7 @@ function doLogin(e){
 }
 function render(){document.getElementById("app").innerHTML=currentUser?shell():loginView()}
 
-document.addEventListener("click",e=>{
+document.addEventListener("click",async e=>{
  const pg=e.target.closest("[data-page]");
  if(pg){page=pg.dataset.page;selectedTattoo=null;render();return}
  const tb=e.target.closest("[data-tab]");
@@ -261,7 +263,20 @@ document.addEventListener("click",e=>{
   state.archivedUsers=state.archivedUsers||[];
   state.archivedUsers.push({...u,deletedAt:new Date().toISOString()});
   state.users=state.users.filter(x=>x.id!==u.id);
-  save();render();toast("Employé supprimé. Son historique est conservé.");return
+  localStorage.setItem(KEY,JSON.stringify(state));
+  if(sharedReady){
+   try{
+    await supabaseSaveState();
+   }catch(error){
+    console.error("Suppression employé - Supabase:",error);
+    alert("La suppression n'a pas pu être synchronisée avec Supabase. Aucun changement n'a été conservé.");
+    state.users.push(u);
+    state.archivedUsers=state.archivedUsers.filter(x=>!(x.id===u.id&&x.deletedAt));
+    localStorage.setItem(KEY,JSON.stringify(state));
+    return;
+   }
+  }
+  render();toast("Employé supprimé. Son historique est conservé.");return
  }
  const tog=e.target.closest("[data-toggle]");
  if(tog){const u=state.users.find(x=>x.id===Number(tog.dataset.toggle));if(u){u.active=!u.active;u.status=u.active?"Actif":"Suspendu";save();render();toast(u.active?"Compte activé.":"Compte désactivé.")}return}
