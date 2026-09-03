@@ -271,19 +271,8 @@ document.addEventListener("click",e=>{
  if(editEmployee){
   const u=state.users.find(x=>x.id===Number(editEmployee.dataset.editEmployee));
   if(!u)return;
-  const phone=prompt(`Téléphone de ${u.name}`,u.phone||"");
-  if(phone===null)return;
-  const birthDate=prompt(`Date de naissance de ${u.name} (JJ/MM/AAAA)`,u.birthDate||"");
-  if(birthDate===null)return;
-  const hireDate=prompt(`Date d'embauche de ${u.name} (JJ/MM/AAAA)`,u.hireDate||"");
-  if(hireDate===null)return;
-  const endDate=prompt(`Date de fin de contrat de ${u.name} (laisser vide si CDI)`,u.endDate||"");
-  if(endDate===null)return;
-  const status=prompt(`Statut de ${u.name} : Actif, Suspendu ou Fin de contrat`,u.status||"Actif");
-  if(status===null)return;
-  if(!["Actif","Suspendu","Fin de contrat"].includes(status)){alert("Statut invalide.");return}
-  u.phone=phone.trim();u.birthDate=birthDate.trim();u.hireDate=hireDate.trim();u.endDate=endDate.trim();u.status=status;u.active=status==="Actif";
-  save();render();toast("Informations employé mises à jour.");return
+  openEditEmployeeModal(u);
+  return;
  }
  const grade=e.target.closest("[data-grade]");
  if(grade){const u=state.users.find(x=>x.id===Number(grade.dataset.grade)),v=prompt(`Grade de ${u.name} : Patron, Manager ou Employé`,u.grade);if(["Patron","Manager","Employé"].includes(v)){u.grade=v;save();render();toast("Grade mis à jour.")}else if(v!==null)alert("Grade invalide.");return}
@@ -291,13 +280,9 @@ document.addEventListener("click",e=>{
  if(del){
   const u=state.users.find(x=>x.id===Number(del.dataset.deleteEmployee));
   if(!u)return;
-  if(u.role==="admin"){alert("Le compte administrateur ne peut pas être supprimé ici.");return}
-  const ok=confirm(`Supprimer le compte de ${u.name} ?\n\nSon compte sera retiré des employés, mais ses ventes, services, heures et archives seront conservés dans l'historique.`);
-  if(!ok)return;
-  state.archivedUsers=state.archivedUsers||[];
-  state.archivedUsers.push({...u,deletedAt:new Date().toISOString()});
-  state.users=state.users.filter(x=>x.id!==u.id);
-  save();render();toast("Employé supprimé. Son historique est conservé.");return
+  if(u.role==="admin"){showNoticeModal("Suppression impossible","Le compte administrateur ne peut pas être supprimé ici.");return}
+  openDeleteEmployeeModal(u);
+  return;
  }
  const tog=e.target.closest("[data-toggle]");
  if(tog){const u=state.users.find(x=>x.id===Number(tog.dataset.toggle));if(u){u.active=!u.active;u.status=u.active?"Actif":"Suspendu";save();render();toast(u.active?"Compte activé.":"Compte désactivé.")}return}
@@ -327,6 +312,56 @@ function openEmployeeModal(){
    </div>
   </div>`);
 }
+
+function openEditEmployeeModal(u){
+ const old=document.getElementById("employeeModal"); if(old) old.remove();
+ document.body.insertAdjacentHTML("beforeend",`
+  <div id="employeeModal" class="modal-backdrop">
+   <div class="employee-modal card">
+    <div class="modal-head"><div><div class="eyebrow">SAINTS TATTOO</div><h3>Modifier ${esc(u.name)}</h3></div><button type="button" class="btn small" data-employee-cancel>Fermer</button></div>
+    <div class="employee-form-grid">
+     <label>Nom complet<input id="em-name" type="text" value="${esc(u.name)}"></label>
+     <label>Identifiant<input id="em-username" type="text" value="${esc(u.username)}"></label>
+     <label>Mot de passe<input id="em-password" type="text" value="${esc(u.password)}"></label>
+     <label>Grade<select id="em-grade"><option ${u.grade==="Employé"?"selected":""}>Employé</option><option ${u.grade==="Manager"?"selected":""}>Manager</option><option ${u.grade==="Patron"?"selected":""}>Patron</option></select></label>
+     <label>Numéro de téléphone<input id="em-phone" type="text" value="${esc(u.phone||"")}"></label>
+     <label>Date de naissance<input id="em-birth" type="text" value="${esc(u.birthDate||"")}" placeholder="JJ/MM/AAAA"></label>
+     <label>Date d'embauche<input id="em-hire" type="text" value="${esc(u.hireDate||"")}" placeholder="JJ/MM/AAAA"></label>
+     <label>Date de fin de contrat<input id="em-end" type="text" value="${esc(u.endDate||"")}" placeholder="Laisser vide si CDI"></label>
+     <label>Statut<select id="em-status"><option ${u.status==="Actif"?"selected":""}>Actif</option><option ${u.status==="Suspendu"?"selected":""}>Suspendu</option><option ${u.status==="Fin de contrat"?"selected":""}>Fin de contrat</option></select></label>
+    </div>
+    <div class="modal-actions"><button type="button" class="btn" data-employee-cancel>Annuler</button><button type="button" class="btn primary" data-employee-update="${u.id}">Enregistrer</button></div>
+   </div>
+  </div>`);
+}
+
+function updateEmployeeModal(id){
+ const u=state.users.find(x=>x.id===Number(id)); if(!u)return;
+ const name=document.getElementById("em-name")?.value.trim(), username=document.getElementById("em-username")?.value.trim(), password=document.getElementById("em-password")?.value.trim();
+ const grade=document.getElementById("em-grade")?.value||"Employé", phone=document.getElementById("em-phone")?.value.trim()||"", birthDate=document.getElementById("em-birth")?.value.trim()||"", hireDate=document.getElementById("em-hire")?.value.trim()||"", endDate=document.getElementById("em-end")?.value.trim()||"", status=document.getElementById("em-status")?.value||"Actif";
+ if(!name||!username||!password){toast("Remplis le nom, l'identifiant et le mot de passe.");return}
+ if(!["Actif","Suspendu","Fin de contrat"].includes(status)){toast("Statut invalide.");return}
+ if(state.users.some(x=>x.id!==u.id && String(x.username).toLowerCase()===username.toLowerCase())){toast("Cet identifiant existe déjà.");return}
+ Object.assign(u,{name,username,password,grade,phone,birthDate,hireDate,endDate,status,active:status==="Actif"});
+ save(); closeEmployeeModal(); render(); toast("Informations employé mises à jour.");
+}
+
+function openDeleteEmployeeModal(u){
+ const old=document.getElementById("deleteEmployeeModal"); if(old) old.remove();
+ document.body.insertAdjacentHTML("beforeend",`<div id="deleteEmployeeModal" class="modal-backdrop"><div class="employee-modal card"><div class="modal-head"><div><div class="eyebrow">SAINTS TATTOO</div><h3>Supprimer ${esc(u.name)} ?</h3></div><button type="button" class="btn small" data-delete-cancel>Fermer</button></div><p class="muted">Le compte sera retiré des employés, mais les ventes, services, heures et archives seront conservés.</p><div class="modal-actions"><button type="button" class="btn" data-delete-cancel>Annuler</button><button type="button" class="btn danger" data-delete-confirm="${u.id}">Supprimer définitivement le compte</button></div></div></div>`);
+}
+function deleteEmployee(id){
+ const u=state.users.find(x=>x.id===Number(id)); if(!u)return;
+ state.archivedUsers=state.archivedUsers||[];
+ state.archivedUsers.push({...u,deletedAt:new Date().toISOString()});
+ state.users=state.users.filter(x=>x.id!==u.id);
+ save(); document.getElementById("deleteEmployeeModal")?.remove(); render(); toast("Employé supprimé. Son historique est conservé.");
+}
+function showNoticeModal(title,message){
+ const old=document.getElementById("noticeModal"); if(old) old.remove();
+ document.body.insertAdjacentHTML("beforeend",`<div id="noticeModal" class="modal-backdrop"><div class="employee-modal card"><div class="modal-head"><h3>${esc(title)}</h3><button type="button" class="btn small" data-notice-close>Fermer</button></div><p class="muted">${esc(message)}</p><div class="modal-actions"><button type="button" class="btn primary" data-notice-close>OK</button></div></div></div>`);
+}
+
 function closeEmployeeModal(){document.getElementById("employeeModal")?.remove()}
 function saveEmployeeModal(){
  const name=document.getElementById("em-name")?.value.trim(), username=document.getElementById("em-username")?.value.trim(), password=document.getElementById("em-password")?.value.trim();
@@ -340,6 +375,12 @@ function saveEmployeeModal(){
 document.addEventListener("click",e=>{
  if(e.target.closest("[data-employee-cancel]")){closeEmployeeModal();return}
  if(e.target.closest("[data-employee-save]")){saveEmployeeModal();return}
+ const upd=e.target.closest("[data-employee-update]");
+ if(upd){updateEmployeeModal(upd.dataset.employeeUpdate);return}
+ if(e.target.closest("[data-delete-cancel]")){document.getElementById("deleteEmployeeModal")?.remove();return}
+ const dc=e.target.closest("[data-delete-confirm]");
+ if(dc){deleteEmployee(dc.dataset.deleteConfirm);return}
+ if(e.target.closest("[data-notice-close]")){document.getElementById("noticeModal")?.remove();return}
 });
 
 setInterval(()=>{if(archiveWeekIfNeeded()&&currentUser)render();else if(currentUser)render()},60000);
