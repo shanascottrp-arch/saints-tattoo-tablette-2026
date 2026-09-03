@@ -193,30 +193,32 @@ async function doLogin(e){
    (normalizeLogin(x.username)===username || normalizeLogin(x.name)===username) &&
    String(x.password).trim()===password && x.active!==false
  );
- let u=findUser();
- // En cas de connexion depuis un appareil qui n'a pas encore chargé la dernière version distante,
- // on relit Supabase une fois avant de refuser la connexion.
- if(!u){
-  try{
-   const remoteState=await supabaseGetState();
-   if(remoteState && Object.keys(remoteState).length){
-    state={...structuredClone(DEFAULT),...remoteState};
-    state.users=(state.users||[]).map(x=>({...x,
-      grade:x.grade||((x.role==="admin")?"Patron":"Employé"),
-      phone:x.phone||"",birthDate:x.birthDate||"",hireDate:x.hireDate||"",
-      endDate:x.endDate||"",status:x.status||((x.active===false)?"Inactif":"Actif")
-    }));
-    state.prices={...DEFAULT.prices,...(state.prices||{})};
-    state.salaryQuota=Number(state.salaryQuota||5000);
-    state.salaryByGrade={...DEFAULT.salaryByGrade,...(state.salaryByGrade||{})};
-    state.transactions=state.transactions||[]; state.services=state.services||[];
-    state.sales=state.sales||[]; state.salaryPayments=state.salaryPayments||[];
-    state.weeklyArchives=state.weeklyArchives||[]; state.archivedUsers=state.archivedUsers||[];
-    state.lastWeeklyArchiveKey=state.lastWeeklyArchiveKey||null;
-    localStorage.setItem(KEY,JSON.stringify(state));
-    u=findUser();
-   }
-  }catch(err){ console.error("Supabase login:",err); }
+ let u=null;
+ // Toujours relire l'état partagé au moment de la connexion.
+ // Cela évite qu'un ancien localStorage du navigateur en jeu masque les nouveaux comptes.
+ try{
+  const remoteState=await supabaseGetState();
+  if(remoteState && Object.keys(remoteState).length){
+   state={...structuredClone(DEFAULT),...remoteState};
+   state.users=(state.users||[]).map(x=>({...x,
+     grade:x.grade||((x.role==="admin")?"Patron":"Employé"),
+     phone:x.phone||"",birthDate:x.birthDate||"",hireDate:x.hireDate||"",
+     endDate:x.endDate||"",status:x.status||((x.active===false)?"Inactif":"Actif")
+   }));
+   state.prices={...DEFAULT.prices,...(state.prices||{})};
+   state.salaryQuota=Number(state.salaryQuota||5000);
+   state.salaryByGrade={...DEFAULT.salaryByGrade,...(state.salaryByGrade||{})};
+   state.transactions=state.transactions||[]; state.services=state.services||[];
+   state.sales=state.sales||[]; state.salaryPayments=state.salaryPayments||[];
+   state.weeklyArchives=state.weeklyArchives||[]; state.archivedUsers=state.archivedUsers||[];
+   state.lastWeeklyArchiveKey=state.lastWeeklyArchiveKey||null;
+   localStorage.setItem(KEY,JSON.stringify(state));
+  }
+  u=findUser();
+ }catch(err){
+  console.error("Supabase login:",err);
+  // Si Supabase est momentanément indisponible, on tente l'état local.
+  u=findUser();
  }
  if(!u){const er=document.getElementById("loginError");if(er)er.textContent="Identifiant ou mot de passe incorrect.";return false}
  currentUser=u;page="home";selectedTattoo=null;render();return false;
