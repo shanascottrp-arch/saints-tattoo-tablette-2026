@@ -1,4 +1,8 @@
 const KEY="saintsTattooTablette";
+const SUPABASE_URL="https://keksjbpgusemdcgwgfgj.supabase.co";
+const SUPABASE_KEY="sb_publishable_tie5i1ZH57xSJgf9Hx-DLQ_FCkIURi6";
+const db=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+let sharedReady=false;
 const DEFAULT={
  users:[
   {id:1,name:"Kuroiki Ayamé",username:'Kuroiki Ayamé',password:'6566',role:"admin",grade:"Patron",active:true,phone:"",birthDate:"",hireDate:"",endDate:"",status:"Actif"},
@@ -8,7 +12,6 @@ const DEFAULT={
  transactions:[],services:[],sales:[],salaryPayments:[],weeklyArchives:[],lastWeeklyArchiveKey:null,nextId:10
 };
 let state=load(), currentUser=null, page="home", selectedTattoo=null;
-archiveWeekIfNeeded();
 
 function load(){
  try{
@@ -35,7 +38,38 @@ function load(){
   return s;
  }catch(e){return structuredClone(DEFAULT)}
 }
-function save(){localStorage.setItem(KEY,JSON.stringify(state))}
+function save(){
+ localStorage.setItem(KEY,JSON.stringify(state));
+ if(sharedReady){
+  db.from("app_state").upsert({id:1,state,updated_at:new Date().toISOString()}).then(({error})=>{
+   if(error) console.error("Supabase sauvegarde:",error);
+  });
+ }
+}
+async function initSharedState(){
+ try{
+  const {data,error}=await db.from("app_state").select("state").eq("id",1).maybeSingle();
+  if(error) throw error;
+  if(data?.state && Object.keys(data.state).length){
+   state={...structuredClone(DEFAULT),...data.state};
+   state.users=(state.users||[]).map(u=>({...u,grade:u.grade||((u.role==="admin")?"Patron":"Employé"),phone:u.phone||"",birthDate:u.birthDate||"",hireDate:u.hireDate||"",endDate:u.endDate||"",status:u.status||((u.active===false)?"Inactif":"Actif")}));
+   state.prices={...DEFAULT.prices,...(state.prices||{})};
+   state.salaryQuota=Number(state.salaryQuota||5000);
+   state.salaryByGrade={...DEFAULT.salaryByGrade,...(state.salaryByGrade||{})};
+   state.transactions=state.transactions||[];state.services=state.services||[];state.sales=state.sales||[];state.salaryPayments=state.salaryPayments||[];state.weeklyArchives=state.weeklyArchives||[];state.archivedUsers=state.archivedUsers||[];state.lastWeeklyArchiveKey=state.lastWeeklyArchiveKey||null;
+   localStorage.setItem(KEY,JSON.stringify(state));
+  }else{
+   await db.from("app_state").upsert({id:1,state,updated_at:new Date().toISOString()});
+  }
+  sharedReady=true;
+ }catch(err){
+  console.error("Supabase connexion:",err);
+  alert("La connexion partagée à Supabase n'est pas disponible. La tablette utilise temporairement les données locales.");
+  sharedReady=false;
+ }
+ archiveWeekIfNeeded();
+ render();
+}
 function weekKey(d=new Date()){const x=new Date(d);x.setHours(0,0,0,0);const n=(x.getDay()+6)%7;x.setDate(x.getDate()-n);return x.toISOString().slice(0,10)}
 function weekRange(key){const start=new Date(key+"T00:00:00");const end=new Date(start);end.setDate(end.getDate()+7);return {start,end}}
 function archiveWeekIfNeeded(){
@@ -244,4 +278,4 @@ document.addEventListener("click",e=>{
 });
 
 setInterval(()=>{if(archiveWeekIfNeeded()&&currentUser)render();else if(currentUser)render()},60000);
-render();
+initSharedState();
