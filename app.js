@@ -186,42 +186,57 @@ function normalizeLogin(v){
 }
 async function doLogin(e){
  e.preventDefault();
- const rawLogin=(document.getElementById("username")?.value||"");
- const username=normalizeLogin(rawLogin);
- const password=String(document.getElementById("password")?.value||"").trim();
- const findUser=()=>state.users.find(x=>
-   (normalizeLogin(x.username)===username || normalizeLogin(x.name)===username) &&
-   String(x.password).trim()===password && x.active!==false
- );
- let u=null;
- // Toujours relire l'état partagé au moment de la connexion.
- // Cela évite qu'un ancien localStorage du navigateur en jeu masque les nouveaux comptes.
+ const inputUser=document.getElementById("username");
+ const inputPass=document.getElementById("password");
+ const errorEl=document.getElementById("loginError");
+ const submit=e.submitter||document.querySelector('#loginForm button[type="submit"]');
+ const rawLogin=String(inputUser?.value||"");
+ const login=normalizeLogin(rawLogin);
+ const password=String(inputPass?.value||"").trim();
+ if(errorEl) errorEl.textContent="";
+ if(submit) submit.disabled=true;
  try{
+  // Toujours lire les comptes depuis Supabase au moment de la connexion.
   const remoteState=await supabaseGetState();
-  if(remoteState && Object.keys(remoteState).length){
-   state={...structuredClone(DEFAULT),...remoteState};
-   state.users=(state.users||[]).map(x=>({...x,
-     grade:x.grade||((x.role==="admin")?"Patron":"Employé"),
-     phone:x.phone||"",birthDate:x.birthDate||"",hireDate:x.hireDate||"",
-     endDate:x.endDate||"",status:x.status||((x.active===false)?"Inactif":"Actif")
-   }));
-   state.prices={...DEFAULT.prices,...(state.prices||{})};
-   state.salaryQuota=Number(state.salaryQuota||5000);
-   state.salaryByGrade={...DEFAULT.salaryByGrade,...(state.salaryByGrade||{})};
-   state.transactions=state.transactions||[]; state.services=state.services||[];
-   state.sales=state.sales||[]; state.salaryPayments=state.salaryPayments||[];
-   state.weeklyArchives=state.weeklyArchives||[]; state.archivedUsers=state.archivedUsers||[];
-   state.lastWeeklyArchiveKey=state.lastWeeklyArchiveKey||null;
-   localStorage.setItem(KEY,JSON.stringify(state));
+  if(!remoteState || !Array.isArray(remoteState.users)){
+   throw new Error("Les comptes employés sont introuvables dans app_state.");
   }
-  u=findUser();
+  state={...structuredClone(DEFAULT),...remoteState};
+  state.users=(remoteState.users||[]).map(x=>({...x,
+   grade:x.grade||((x.role==="admin")?"Patron":"Employé"),
+   phone:x.phone||"",birthDate:x.birthDate||"",hireDate:x.hireDate||"",
+   endDate:x.endDate||"",status:x.status||((x.active===false)?"Inactif":"Actif")
+  }));
+  state.prices={...DEFAULT.prices,...(state.prices||{})};
+  state.salaryQuota=Number(state.salaryQuota||5000);
+  state.salaryByGrade={...DEFAULT.salaryByGrade,...(state.salaryByGrade||{})};
+  state.transactions=state.transactions||[]; state.services=state.services||[];
+  state.sales=state.sales||[]; state.salaryPayments=state.salaryPayments||[];
+  state.weeklyArchives=state.weeklyArchives||[]; state.archivedUsers=state.archivedUsers||[];
+  state.lastWeeklyArchiveKey=state.lastWeeklyArchiveKey||null;
+  localStorage.setItem(KEY,JSON.stringify(state));
+
+  const u=state.users.find(x=>{
+   const idMatch=normalizeLogin(x.username)===login || normalizeLogin(x.name)===login;
+   const passMatch=String(x.password??"").trim()===password;
+   return idMatch && passMatch && x.active!==false;
+  });
+  if(!u){
+   if(errorEl) errorEl.textContent="Identifiant ou mot de passe incorrect.";
+   return false;
+  }
+  currentUser=u;
+  page="home";
+  selectedTattoo=null;
+  render();
+  return false;
  }catch(err){
   console.error("Supabase login:",err);
-  // Si Supabase est momentanément indisponible, on tente l'état local.
-  u=findUser();
+  if(errorEl) errorEl.textContent="Impossible de vérifier le compte. Vérifie la connexion Supabase.";
+  return false;
+ }finally{
+  if(submit) submit.disabled=false;
  }
- if(!u){const er=document.getElementById("loginError");if(er)er.textContent="Identifiant ou mot de passe incorrect.";return false}
- currentUser=u;page="home";selectedTattoo=null;render();return false;
 }
 function render(){document.getElementById("app").innerHTML=currentUser?shell():loginView()}
 
