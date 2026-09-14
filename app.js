@@ -100,23 +100,30 @@ async function initSharedState(){
  archiveWeekIfNeeded();
  render();
 }
-function weekKey(d=new Date()){const x=new Date(d);x.setHours(0,0,0,0);const n=(x.getDay()+6)%7;x.setDate(x.getDate()-n);return x.toISOString().slice(0,10)}
-function weekRange(key){const start=new Date(key+"T00:00:00");const end=new Date(start);end.setDate(end.getDate()+7);return {start,end}}
-function archiveWeekIfNeeded(){
- const now=new Date(), key=weekKey(now);
- if(state.lastWeeklyArchiveKey===key)return false;
- const prev=new Date(now);prev.setDate(prev.getDate()-(now.getDay()||7));prev.setHours(0,0,0,0);
- const prevKey=weekKey(prev);
- if(!state.lastWeeklyArchiveKey){state.lastWeeklyArchiveKey=key;save();return false}
- if(state.lastWeeklyArchiveKey!==key){
-  const {start,end}=weekRange(state.lastWeeklyArchiveKey);
-  const ss=state.sales.filter(x=>{const d=new Date(x.createdAt);return d>=start&&d<end});
-  const tt=state.transactions.filter(x=>{const d=new Date(x.createdAt);return d>=start&&d<end});
-  const services=state.services.filter(x=>{const d=new Date(x.start);return d>=start&&d<end});
-  state.weeklyArchives.push({id:state.nextId++,week:state.lastWeeklyArchiveKey,createdAt:now.toISOString(),sales:ss.length,salesAmount:ss.reduce((a,x)=>a+x.amount,0),income:tt.filter(x=>x.type==='income').reduce((a,x)=>a+x.amount,0),expenses:tt.filter(x=>x.type==='expense').reduce((a,x)=>a+x.amount,0),services:services.length,hours:services.reduce((a,x)=>a+Math.max(0,(new Date(x.end||x.start)-new Date(x.start))/36e5),0)});
-  state.lastWeeklyArchiveKey=key;save();return true;
+function weekBoundary(d=new Date()){
+ const x=new Date(d); x.setSeconds(0,0);
+ const day=x.getDay();
+ const boundary=new Date(x); boundary.setHours(0,40,0,0);
+ if(day===0 && x < boundary){
+  boundary.setDate(boundary.getDate()-7);
+ } else {
+  boundary.setDate(boundary.getDate()-day);
  }
- return false;
+ return boundary;
+}
+function weekKey(d=new Date()){return weekBoundary(d).toISOString().slice(0,10)}
+function weekRange(key){const start=new Date(key+"T00:40:00");const end=new Date(start);end.setDate(end.getDate()+7);return {start,end}}
+function archiveWeekIfNeeded(){
+ const now=new Date(), currentKey=weekKey(now);
+ if(!state.lastWeeklyArchiveKey){state.lastWeeklyArchiveKey=currentKey;save();return false}
+ if(state.lastWeeklyArchiveKey===currentKey)return false;
+ const {start,end}=weekRange(state.lastWeeklyArchiveKey);
+ const ss=state.sales.filter(x=>{const d=new Date(x.createdAt);return d>=start&&d<end});
+ const tt=state.transactions.filter(x=>{const d=new Date(x.createdAt);return d>=start&&d<end});
+ const services=state.services.filter(x=>{const d=new Date(x.start);return d>=start&&d<end});
+ state.weeklyArchives=state.weeklyArchives||[];
+ state.weeklyArchives.push({id:state.nextId++,week:state.lastWeeklyArchiveKey,createdAt:now.toISOString(),periodStart:start.toISOString(),periodEnd:end.toISOString(),sales:ss.length,salesAmount:ss.reduce((a,x)=>a+Number(x.amount||0),0),income:tt.filter(x=>x.type==='income').reduce((a,x)=>a+Number(x.amount||0),0),expenses:tt.filter(x=>x.type==='expense').reduce((a,x)=>a+Number(x.amount||0),0),services:services.length,hours:services.reduce((a,x)=>a+Math.max(0,(new Date(x.end||x.start)-new Date(x.start))/36e5),0)});
+ state.lastWeeklyArchiveKey=currentKey; save(); return true;
 }
 function esc(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]))}
 function money(v){return new Intl.NumberFormat("fr-FR",{maximumFractionDigits:2}).format(Number(v)||0)+" $"}
@@ -144,7 +151,7 @@ function shell(){return `<div class="shell"><aside class="sidebar"><div class="s
 function home(){const s=activeService(currentUser.id),mine=sales().filter(x=>x.userId===currentUser.id).reduce((a,x)=>a+x.amount,0),recent=state.sales.filter(x=>x.userId===currentUser.id).slice(-5).reverse();return `${header("Bonjour "+esc(currentUser.name),"Votre espace de gestion Saints Tattoo.")}<div class="hero-grid"><section class="card hero"><span class="eyebrow">ESPACE PERSONNEL</span><h3>Une tablette simple.<br>Une gestion maîtrisée.</h3><p>Service, prestations et résultats réunis au même endroit.</p><div class="actions"><button class="btn primary" data-page="tattoo">✒ Nouvelle prestation</button><button class="btn" data-page="service">◷ Mon service</button></div></section><section class="card service-widget"><div class="row"><h3>Service</h3><span class="badge ${s?"green":"red"}">${s?"EN SERVICE":"HORS SERVICE"}</span></div><div class="big-time">${s?fh((Date.now()-new Date(s.start))/36e5):"--h--"}</div><small>${s?"Depuis "+dt(s.start):"Aucun service en cours"}</small><button type="button" class="btn ${s?"danger":"success"}" data-action="service">${s?"Fin de service":"Prendre son service"}</button></section></div><div class="cards4"><div class="card stat"><small>CA aujourd'hui</small><b>${money(income("day"))}</b></div><div class="card stat"><small>CA ce mois</small><b>${money(income("month"))}</b></div><div class="card stat"><small>Mes ventes</small><b>${money(mine)}</b></div><div class="card stat"><small>Mes heures</small><b>${fh(hours(currentUser.id))}</b></div></div><section class="card"><div class="row"><h3>Dernières prestations</h3><button class="btn small" data-page="history">Voir tout</button></div>${recent.length?`<div class="list">${recent.map(x=>`<div class="list-row"><div><b>${esc(x.type)}</b><small>${dt(x.createdAt)}</small></div><strong class="plus">+${money(x.amount)}</strong></div>`).join("")}`:`<div class="empty">Aucune prestation.</div>`}</section>`}
 function servicePage(){const s=activeService(currentUser.id),list=state.services.filter(x=>x.userId===currentUser.id).slice().reverse();return `${header("Service","Enregistrez vos heures automatiquement.")}<section class="card service-panel"><span class="badge ${s?"green":"red"}">${s?"EN SERVICE":"HORS SERVICE"}</span><div class="big-time">${s?fh((Date.now()-new Date(s.start))/36e5):"--h--"}</div><small>${s?"Début : "+dt(s.start):"Aucun service en cours"}</small><br><button type="button" class="btn ${s?"danger":"success"}" data-action="service">${s?"Fin de service":"Prendre son service"}</button></section><section class="card"><div class="row"><h3>Mes services récents</h3><span class="badge">Ce mois : ${fh(hours(currentUser.id))}</span></div><div class="table-wrap"><table><thead><tr><th>Début</th><th>Fin</th><th>Durée</th></tr></thead><tbody>${list.map(x=>`<tr><td>${dt(x.start)}</td><td>${x.end?dt(x.end):'<span class="badge green">En cours</span>'}</td><td>${fh((new Date(x.end||Date.now())-new Date(x.start))/36e5)}</td></tr>`).join("")||'<tr><td colspan="3" class="empty">Aucun service.</td></tr>'}</tbody></table></div></section>`}
 function tattooPage(){const s=activeService(currentUser.id);const items=[["Petit","machine-petit.svg","Petit format"],["Moyen","machine-moyen.svg","Format moyen"],["Grand","machine-grand.svg","Grand format"],["Personnalisé","machine-personnalise.svg","Montant libre"]];const counts=tattooCounts||{};const totalCount=Object.values(counts).reduce((a,n)=>a+n,0);const total=Object.entries(counts).reduce((a,[k,n])=>a+(k!=="Personnalisé"?Number(state.prices[k]||0)*n:0),0);const selection=Object.entries(counts).filter(([,n])=>n>0).map(([k,n])=>`${esc(k)} × ${n}`).join(" + ");return `${header("Tatouage","Cliquez plusieurs fois sur une taille pour ajouter plusieurs tatouages, puis validez le paiement.")}${!s?'<div class="notice">⚠ Vous devez être en service pour enregistrer une prestation.</div>':""}<section class="card"><div class="row"><h3>Nouvelle prestation</h3><span class="badge">Sélection multiple</span></div><div class="tattoo-grid">${items.map(([k,img,sub])=>`<button type="button" class="tattoo-option ${counts[k]?"selected":""}" data-tattoo="${k}" ${s?"":"disabled"}><img src="assets/${img}" alt="Machine à tatouer"><span>${k}${counts[k]?` × ${counts[k]}`:""}</span><b>${k==="Personnalisé"?"Montant libre":money(state.prices[k])}</b><small>${sub}</small></button>`).join("")}</div>${totalCount?`<div class="payment-box"><div><small>SÉLECTION</small><b>${selection}</b></div><div><small>TOTAL</small><b>${counts.Personnalisé?"Montant à définir":money(total)}</b></div><div class="actions"><button type="button" class="btn" data-action="undoTattoo">Retirer le dernier</button><button type="button" class="btn danger" data-action="clearTattoos">Vider la sélection</button><button type="button" class="btn primary" data-action="sale">Valider ${totalCount>1?"les paiements":"le paiement"}</button></div></div>`:""}</section>`}
-function historyPage(){const all=currentUser.role==="admin",ss=state.sales.filter(x=>all||x.userId===currentUser.id).slice().reverse(),sv=state.services.filter(x=>all||x.userId===currentUser.id).slice().reverse(),wa=state.weeklyArchives.slice().reverse();return `${header("Historique","Prestations et services enregistrés.")}<div class="tabs"><button type="button" class="tab active" data-tab="sales">Prestations (${ss.length})</button><button type="button" class="tab" data-tab="services">Services (${sv.length})</button><button type="button" class="tab" data-tab="archives">Archives (${wa.length})</button></div><section class="card tab-panel" id="tabSales"><div class="table-wrap"><table><thead><tr><th>Date</th><th>Tatoueur</th><th>Taille</th><th>Montant</th></tr></thead><tbody>${ss.map(x=>{const u=getUser(x.userId);return `<tr><td>${dt(x.createdAt)}</td><td>${esc(u?.name)}</td><td>${esc(x.type)}</td><td class="plus">+${money(x.amount)}</td></tr>`}).join("")||'<tr><td colspan="4" class="empty">Aucune prestation.</td></tr>'}</tbody></table></div></section><section class="card tab-panel hidden" id="tabServices"><div class="table-wrap"><table><thead><tr><th>Début</th><th>Fin</th><th>Tatoueur</th><th>Durée</th></tr></thead><tbody>${sv.map(x=>{const u=getUser(x.userId);return `<tr><td>${dt(x.start)}</td><td>${x.end?dt(x.end):'<span class="badge green">En cours</span>'}</td><td>${esc(u?.name)}</td><td>${fh((new Date(x.end||Date.now())-new Date(x.start))/36e5)}</td></tr>`}).join("")||'<tr><td colspan="4" class="empty">Aucun service.</td></tr>'}</tbody></table></div></section>`}
+function historyPage(){const all=currentUser.role==="admin",ss=state.sales.filter(x=>all||x.userId===currentUser.id).slice().reverse(),sv=state.services.filter(x=>all||x.userId===currentUser.id).slice().reverse(),wa=(state.weeklyArchives||[]).slice().reverse();return `${header("Historique","Prestations, services et clôtures hebdomadaires.")}<div class="tabs"><button type="button" class="tab active" data-tab="sales">Prestations (${ss.length})</button><button type="button" class="tab" data-tab="services">Services (${sv.length})</button>${all?`<button type="button" class="tab" data-tab="archives">Archives (${wa.length})</button>`:""}</div><section class="card tab-panel" id="tabSales"><div class="table-wrap"><table><thead><tr><th>Date</th><th>Tatoueur</th><th>Taille</th><th>Montant</th></tr></thead><tbody>${ss.map(x=>{const u=getUser(x.userId);return `<tr><td>${dt(x.createdAt)}</td><td>${esc(u?.name||x.employeeName||"—")}</td><td>${esc(x.type)}</td><td class="plus">+${money(x.amount)}</td></tr>`}).join("")||'<tr><td colspan="4" class="empty">Aucune prestation.</td></tr>'}</tbody></table></div></section><section class="card tab-panel hidden" id="tabServices"><div class="table-wrap"><table><thead><tr><th>Début</th><th>Fin</th><th>Tatoueur</th><th>Durée</th></tr></thead><tbody>${sv.map(x=>{const u=getUser(x.userId);return `<tr><td>${dt(x.start)}</td><td>${x.end?dt(x.end):'<span class="badge green">En cours</span>'}</td><td>${esc(u?.name||"—")}</td><td>${fh((new Date(x.end||Date.now())-new Date(x.start))/36e5)}</td></tr>`}).join("")||'<tr><td colspan="4" class="empty">Aucun service.</td></tr>'}</tbody></table></div></section>${all?`<section class="card tab-panel hidden" id="tabArchives"><div class="table-wrap"><table><thead><tr><th>Semaine</th><th>Période</th><th>Recettes</th><th>Dépenses</th><th>CA tatouages</th><th>Prestations</th><th>Services</th><th>Heures</th></tr></thead><tbody>${wa.map(x=>`<tr><td><b>Semaine du ${esc(x.week)}</b></td><td>${dt(x.periodStart)} → ${dt(x.periodEnd)}</td><td class="plus">+${money(x.income)}</td><td class="negative">−${money(x.expenses)}</td><td>${money(x.salesAmount)}</td><td>${x.sales}</td><td>${x.services}</td><td>${fh(x.hours)}</td></tr>`).join("")||'<tr><td colspan="8" class="empty">Aucune semaine archivée.</td></tr>'}</tbody></table></div></section>`:""}`}
 function dashboard(){const emps=state.users.filter(x=>x.role==="employee"),ca=income("month"),dep=expenses("month"),rows=emps.map(u=>({u,ca:sales().filter(x=>x.userId===u.id).reduce((a,x)=>a+x.amount,0),h:hours(u.id)})).sort((a,b)=>b.ca-a.ca),max=Math.max(1,...rows.map(x=>x.ca));const days=[];for(let i=6;i>=0;i--){let d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()-i);days.push({d,c:state.sales.filter(x=>new Date(x.createdAt).toDateString()===d.toDateString()).reduce((a,x)=>a+x.amount,0)})}return `${header("Tableau de bord","La vision complète de Saints Tattoo.")}<div class="cards4"><div class="card stat"><small>Chiffre d'affaires</small><b>${money(ca)}</b></div><div class="card stat"><small>Dépenses</small><b class="negative">${money(dep)}</b></div><div class="card stat"><small>Bénéfice</small><b>${money(ca-dep)}</b></div><div class="card stat"><small>Solde bancaire</small><b>${money(state.bank)}</b></div></div><div class="two-col"><section class="card"><h3>CA des 7 derniers jours</h3><div class="bars">${days.map(x=>`<div class="bar-col"><small>${x.c?money(x.c):"—"}</small><i style="height:${Math.max(6,Math.round(x.c/max*100))}%"></i><label>${x.d.toLocaleDateString("fr-FR",{weekday:"short"}).slice(0,3)}</label></div>`).join("")}</div></section><section class="card"><div class="row"><h3>Classement</h3><span class="badge">Mois</span></div><div class="ranking">${rows.map((x,i)=>`<div class="rank"><b>${i+1}</b><div><strong>${esc(x.u.name)}</strong><div class="track"><i style="width:${Math.round(x.ca/max*100)}%"></i></div></div><span>${money(x.ca)}</span></div>`).join("")||'<div class="empty">Aucun tatoueur.</div>'}</div></section></div><section class="card"><h3>Activité des tatoueurs</h3><div class="table-wrap"><table><thead><tr><th>Tatoueur</th><th>CA</th><th>Prestations</th><th>Heures</th><th>CA / heure</th></tr></thead><tbody>${rows.map(x=>`<tr><td><b>${esc(x.u.name)}</b></td><td>${money(x.ca)}</td><td>${sales().filter(s=>s.userId===x.u.id).length}</td><td>${fh(x.h)}</td><td>${x.h?money(x.ca/x.h):"—"}</td></tr>`).join("")}</tbody></table></div></section>`}
 function accounting(){const tr=state.transactions.slice().reverse();return `${header("Comptabilité","Recettes, dépenses et mouvements.")}<div class="cards3"><div class="card stat"><small>Recettes</small><b class="positive">${money(income())}</b></div><div class="card stat"><small>Dépenses</small><b class="negative">${money(expenses())}</b></div><div class="card stat"><small>Solde</small><b>${money(state.bank)}</b></div></div><div class="actions"><button type="button" class="btn success" data-action="income">+ Ajouter une recette</button><button type="button" class="btn danger" data-action="expense">− Ajouter une dépense</button></div><section class="card"><div class="table-wrap"><table><thead><tr><th>Date</th><th>Employé</th><th>Type</th><th>Catégorie</th><th>Description</th><th>Montant</th><th>Action</th></tr></thead><tbody>${tr.map(t=>`<tr><td>${dt(t.createdAt)}</td><td><span class="badge ${t.type==="income"?"green":"red"}">${t.type==="income"?"Recette":"Dépense"}</span></td><td>${esc(t.category)}</td><td>${esc(t.description)}</td><td class="${t.type==="income"?"plus":"negative"}">${t.type==="income"?"+":"−"}${money(t.amount)}</td><td><button type="button" class="btn small danger" data-delete-transaction="${t.id}">Supprimer</button></td></tr>`).join("")||'<tr><td colspan="7" class="empty">Aucune transaction.</td></tr>'}</tbody></table></div></section>`}
 function payroll(){const es=state.users.filter(x=>["Patron","Manager","Employé"].includes(x.grade)),est=es.reduce((a,u)=>a+salary(u.id),0),paid=es.reduce((a,u)=>a+paidSalary(u.id),0);return `${header("Salaires","La paye dépend uniquement des ventes mensuelles, pas des heures.")}<div class="cards3"><div class="card stat"><small>Quota mensuel</small><b>${money(state.salaryQuota)}</b></div><div class="card stat"><small>Payés</small><b class="positive">${money(paid)}</b></div><div class="card stat"><small>À payer</small><b class="negative">${money(Math.max(0,est-paid))}</b></div></div><section class="card"><div class="table-wrap"><table><thead><tr><th>Tatoueur</th><th>Grade</th><th>Ventes du mois</th><th>Objectif</th><th>Paye</th><th>Statut</th><th></th></tr></thead><tbody>${es.map(u=>{const ca=monthlySales(u.id),e=salary(u.id),p=paidSalary(u.id),r=Math.max(0,e-p),prog=salaryProgress(u.id),atteint=ca>=state.salaryQuota;return `<tr><td><b>${esc(u.name)}</b></td><td>${esc(u.grade)}</td><td>${money(ca)}</td><td><div class="track"><i style="width:${prog}%"></i></div><small>${prog}% · ${money(state.salaryQuota)}</small></td><td>${money(e)}</td><td><span class="badge ${atteint?"green":"red"}">${atteint?"Quota atteint":"Quota non atteint"}</span></td><td>${r?`<button type="button" class="btn small" data-pay="${u.id}">Payer</button>`:(e>0?'<span class="badge green">Soldé</span>':'<span class="badge">En attente</span>')}</td></tr>`}).join("")||'<tr><td colspan="7" class="empty">Aucun tatoueur.</td></tr>'}</tbody></table></div></section>`}
@@ -245,7 +252,7 @@ document.addEventListener("click",e=>{
  const pg=e.target.closest("[data-page]");
  if(pg){page=pg.dataset.page;selectedTattoos=[];tattooCounts={};render();return}
  const tb=e.target.closest("[data-tab]");
- if(tb){document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));tb.classList.add("active");document.getElementById("tabSales")?.classList.toggle("hidden",tb.dataset.tab!=="sales");document.getElementById("tabServices")?.classList.toggle("hidden",tb.dataset.tab!=="services");return}
+ if(tb){document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));tb.classList.add("active");document.getElementById("tabSales")?.classList.toggle("hidden",tb.dataset.tab!=="sales");document.getElementById("tabServices")?.classList.toggle("hidden",tb.dataset.tab!=="services");document.getElementById("tabArchives")?.classList.toggle("hidden",tb.dataset.tab!=="archives");return}
  const t=e.target.closest("[data-tattoo]");
  if(t){if(t.disabled)return;const k=t.dataset.tattoo;tattooCounts=tattooCounts||{};tattooCounts[k]=(tattooCounts[k]||0)+1;selectedTattoos=Object.entries(tattooCounts).flatMap(([type,n])=>Array(n).fill(type));render();return}
  const act=e.target.closest("[data-action]")?.dataset.action;
@@ -271,8 +278,8 @@ document.addEventListener("click",e=>{
   if(desc&&amount>0){const d=new Date().toISOString();state.transactions.push({id:state.nextId++,type:"income",category:"Autre recette",description:desc,amount,createdAt:d});state.bank+=amount;save();render();toast("Recette ajoutée.")}return
  }
  if(act==="expense"){
-  const cats=["Fournitures","Salaires","Événement","Autre dépense"];const n=Number(prompt("Catégorie :\n1. Fournitures\n2. Salaires\n3. Événement\n4. Autre dépense","1"));const cat=cats[n-1],desc=prompt("Description"),amount=Number(prompt("Montant en $","0"));
-  if(cat&&desc&&amount>0){state.transactions.push({id:state.nextId++,type:"expense",category:cat,description:desc,amount,createdAt:new Date().toISOString()});state.bank-=amount;save();render();toast("Dépense ajoutée.")}return
+  openExpenseModal();
+  return;
  }
  if(act==="addEmployee"){
   openEmployeeModal();
@@ -383,6 +390,69 @@ function showNoticeModal(title,message){
  document.body.insertAdjacentHTML("beforeend",`<div id="noticeModal" class="modal-backdrop"><div class="employee-modal card"><div class="modal-head"><h3>${esc(title)}</h3><button type="button" class="btn small" data-notice-close>Fermer</button></div><p class="muted">${esc(message)}</p><div class="modal-actions"><button type="button" class="btn primary" data-notice-close>OK</button></div></div></div>`);
 }
 
+
+function openExpenseModal(){
+ const old=document.getElementById("expenseModal"); if(old) old.remove();
+ document.body.insertAdjacentHTML("beforeend",`
+  <div id="expenseModal" class="modal-backdrop">
+   <div class="employee-modal card">
+    <div class="modal-head">
+      <div><div class="eyebrow">SAINTS TATTOO</div><h3>Ajouter une dépense</h3></div>
+      <button type="button" class="btn small" data-expense-cancel>Fermer</button>
+    </div>
+    <div class="employee-form-grid">
+      <label>Catégorie
+        <select id="expense-category">
+          <option>Fournitures</option>
+          <option>Salaires</option>
+          <option>Événement</option>
+          <option>Autre dépense</option>
+        </select>
+      </label>
+      <label>Description
+        <input id="expense-description" type="text" autocomplete="off" placeholder="Description de la dépense">
+      </label>
+      <label>Montant ($)
+        <input id="expense-amount" type="number" min="0.01" step="0.01" inputmode="decimal" placeholder="0.00">
+      </label>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn" data-expense-cancel>Annuler</button>
+      <button type="button" class="btn danger" data-expense-save>Enregistrer la dépense</button>
+    </div>
+   </div>
+  </div>`);
+}
+
+function closeExpenseModal(){document.getElementById("expenseModal")?.remove()}
+
+function saveExpenseModal(){
+ const category=document.getElementById("expense-category")?.value||"";
+ const description=document.getElementById("expense-description")?.value.trim()||"";
+ const amount=Number(document.getElementById("expense-amount")?.value||0);
+ if(!category || !description || !(amount>0)){
+   toast("Remplis la catégorie, la description et le montant.");
+   return;
+ }
+ const d=new Date().toISOString();
+ state.transactions.push({
+   id:state.nextId++,
+   type:"expense",
+   category,
+   description,
+   amount,
+   createdAt:d,
+   employeeId:currentUser?.id||null,
+   employeeName:currentUser?.name||null
+ });
+ state.bank-=amount;
+ state.bank=Number(state.bank)||0;
+ save();
+ closeExpenseModal();
+ render();
+ toast("Dépense ajoutée.");
+}
+
 function closeEmployeeModal(){document.getElementById("employeeModal")?.remove()}
 function saveEmployeeModal(){
  const name=document.getElementById("em-name")?.value.trim(), username=document.getElementById("em-username")?.value.trim(), password=document.getElementById("em-password")?.value.trim();
@@ -401,11 +471,13 @@ document.addEventListener("click",e=>{
  if(e.target.closest("[data-delete-cancel]")){document.getElementById("deleteEmployeeModal")?.remove();return}
  const dc=e.target.closest("[data-delete-confirm]");
  if(dc){deleteEmployee(dc.dataset.deleteConfirm);return}
+ if(e.target.closest("[data-expense-cancel]")){closeExpenseModal();return}
+ if(e.target.closest("[data-expense-save]")){saveExpenseModal();return}
  if(e.target.closest("[data-transaction-cancel]")){document.getElementById("deleteTransactionModal")?.remove();return}
  const dtc=e.target.closest("[data-delete-transaction-confirm]"); if(dtc){deleteTransaction(dtc.dataset.deleteTransactionConfirm);return}
  const dtr=e.target.closest("[data-delete-transaction]"); if(dtr){openDeleteTransactionModal(dtr.dataset.deleteTransaction);return}
  if(e.target.closest("[data-notice-close]")){document.getElementById("noticeModal")?.remove();return}
 });
 
-setInterval(()=>{if(archiveWeekIfNeeded()&&currentUser)render();else if(currentUser)render()},60000);
+setInterval(()=>{if(archiveWeekIfNeeded()&&currentUser)render();else if(currentUser)render()},30000);
 initSharedState();
